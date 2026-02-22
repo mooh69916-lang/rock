@@ -112,4 +112,168 @@ document.addEventListener('DOMContentLoaded', function(){
       }
     });
   }
+
+  // Animated counters for plan cards (investors, views, rating)
+  function formatNumber(n){
+    if(n === null || n === undefined) return '0';
+    var num = Number(n);
+    if(isNaN(num)) return String(n);
+    // large number formatting (1,234,567)
+    return num.toLocaleString();
+  }
+
+  function animateValue(el, start, end, duration, decimals){
+    var startTime = null; decimals = decimals||0;
+    function step(ts){
+      if(!startTime) startTime = ts;
+      var progress = Math.min((ts - startTime) / duration, 1);
+      var value = start + (end - start) * progress;
+      if(decimals>0) el.textContent = value.toFixed(decimals);
+      else el.textContent = Math.round(value).toLocaleString();
+      if(progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  var counted = new WeakSet();
+  var liveIntervals = new WeakMap();
+
+  function getRandomInt(min, max){ return Math.floor(Math.random()*(max-min+1))+min; }
+
+  function startLiveIncrementForCount(el){
+    if(liveIntervals.has(el)) return;
+    var id = setInterval(function(){
+      var cur = Number(String(el.textContent).replace(/,/g,'')) || 0;
+      var inc = 1;
+      if(cur < 100) inc = getRandomInt(1,5);
+      else if(cur < 1000) inc = getRandomInt(5,20);
+      else inc = Math.max(1, Math.round(cur * 0.002));
+      cur = cur + inc;
+      el.textContent = cur.toLocaleString();
+    }, 5000);
+    liveIntervals.set(el, id);
+  }
+
+  function startLiveIncrementForRating(el){
+    if(liveIntervals.has(el)) return;
+    var id = setInterval(function(){
+      var cur = parseFloat(el.textContent) || 0;
+      var inc = (Math.random() * 0.2); // small bump
+      cur = Math.min(5, +(cur + inc).toFixed(1));
+      el.textContent = cur.toFixed(1);
+    }, 5000);
+    liveIntervals.set(el, id);
+  }
+
+  var observer = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if(!entry.isIntersecting) return;
+      var root = entry.target;
+      // investors and views
+      var counters = root.querySelectorAll('.count-anim');
+      counters.forEach(function(c){
+        if(counted.has(c)) return;
+        var target = Number(c.getAttribute('data-target')) || 0;
+        animateValue(c, 0, target, 1200, 0);
+        counted.add(c);
+        // start periodic live increments after initial animation
+        startLiveIncrementForCount(c);
+      });
+      // rating (decimal)
+      var r = root.querySelector('.rating-anim');
+      if(r && !counted.has(r)){
+        var rt = parseFloat(r.getAttribute('data-target')) || 0;
+        animateValue(r, 0, rt, 900, 1);
+        counted.add(r);
+        startLiveIncrementForRating(r);
+      }
+      observer.unobserve(root);
+    });
+  }, {threshold: 0.35});
+
+  // observe each plan-card-detailed
+  var plans = document.querySelectorAll('.plan-card-detailed');
+  plans.forEach(function(p){ observer.observe(p); });
+});
+
+/* Live testimonials / activity ticker */
+document.addEventListener('DOMContentLoaded', function(){
+  var ticker = document.getElementById('live-ticker');
+  var msgEl = document.getElementById('ticker-message');
+  var closeBtn = document.getElementById('ticker-close');
+  if(!ticker || !msgEl) return;
+
+  // respect previously dismissed state
+  try{ if(localStorage.getItem('liveTickerHidden') === '1'){ ticker.style.display='none'; } }catch(e){}
+
+  function randomFrom(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+  function generateMessages(n){
+    var names = ['John','Michael','Aisha','Fatima','Sarah','David','Emma','Chris','Olivia','Noah','Liam','Sophia','Grace','Samuel','Daniel','Maya','Alex','Abdul','Karen','Hassan'];
+    var countries = ['US','UK','NG','CA','GH','KE','ZA','AU','IN','NG','IE','US','CA','DE','FR'];
+    var actions = [
+      'just registered',
+      'made a deposit of {amount}',
+      'withdrawal successful for {amount}',
+      'completed KYC',
+      'purchased a plan',
+      'upgraded to a higher plan',
+      'received payout of {amount}'
+    ];
+    var currencies = ['$', '₦', '€'];
+    var msgs = [];
+    for(var i=0;i<n;i++){
+      var name = randomFrom(names);
+      var country = randomFrom(countries);
+      var action = randomFrom(actions);
+      var amount = '';
+      if(action.indexOf('{amount}') !== -1){
+        var cur = randomFrom(currencies);
+        var val = Math.floor(Math.random()*9500)+50; // 50 - 9550
+        // make larger numbers prettier
+        if(val>999) val = (Math.round(val/100)*100);
+        amount = cur + val.toLocaleString();
+        action = action.replace('{amount}', amount);
+      }
+      msgs.push(name + ' from ' + country + ' ' + action + '.');
+    }
+    return msgs;
+  }
+
+  var messages = generateMessages(30);
+  var idx = 0;
+  var interval = 3000;
+  var animTimeout = null;
+
+  function showNext(){
+    if(!msgEl) return;
+    // fade out
+    msgEl.classList.remove('show');
+    msgEl.classList.add('fade');
+    clearTimeout(animTimeout);
+    animTimeout = setTimeout(function(){
+      msgEl.textContent = messages[idx];
+      msgEl.classList.remove('fade');
+      msgEl.classList.add('show');
+      idx = (idx + 1) % messages.length;
+    }, 260);
+  }
+
+  var tickerInterval = setInterval(showNext, interval);
+  // show first immediately
+  msgEl.textContent = messages[0];
+  msgEl.classList.add('show');
+  idx = 1;
+
+  // pause on hover
+  ticker.addEventListener('mouseenter', function(){ clearInterval(tickerInterval); });
+  ticker.addEventListener('mouseleave', function(){ tickerInterval = setInterval(showNext, interval); });
+
+  if(closeBtn){
+    closeBtn.addEventListener('click', function(e){
+      e.preventDefault();
+      ticker.style.display = 'none';
+      try{ localStorage.setItem('liveTickerHidden','1'); }catch(e){}
+    });
+  }
 });

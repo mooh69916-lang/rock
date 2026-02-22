@@ -10,6 +10,8 @@ from PIL import Image, UnidentifiedImageError
 import uuid
 from datetime import datetime
 import currency
+import urllib.request
+import urllib.error
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
@@ -27,8 +29,17 @@ app.config['MAX_VIDEO_FILE_SIZE'] = 20 * 1024 * 1024  # 20MB per-video limit
 DB_PATH = os.path.join(BASE_DIR, 'app.db')
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    # Use a short timeout and allow cross-thread access (Flask dev server may use threads).
+    # Also enable WAL mode for better concurrent read/write behavior.
+    conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    try:
+        cur = conn.cursor()
+        cur.execute('PRAGMA journal_mode = WAL')
+        cur.execute('PRAGMA foreign_keys = ON')
+    except Exception:
+        # If pragmas fail, continue with the connection — they are advisory
+        pass
     return conn
 
 def init_db():
@@ -46,6 +57,43 @@ except Exception:
     # Avoid crashing on import; errors will surface in logs
     import sys
     print('Warning: failed to initialize database schema', file=sys.stderr)
+
+# Ensure investments table has optional columns used by newer codepaths
+def ensure_investment_columns():
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(investments)")
+        cols = [r[1] for r in cur.fetchall()]
+        needed = []
+        if 'amount_usd' not in cols:
+            needed.append("ALTER TABLE investments ADD COLUMN amount_usd REAL DEFAULT 0.0")
+        if 'amount_local' not in cols:
+            needed.append("ALTER TABLE investments ADD COLUMN amount_local REAL")
+        if 'currency_code' not in cols:
+            needed.append("ALTER TABLE investments ADD COLUMN currency_code TEXT")
+        if 'current_profit' not in cols:
+            needed.append("ALTER TABLE investments ADD COLUMN current_profit REAL DEFAULT 0.0")
+        for s in needed:
+            try:
+                cur.execute(s)
+            except Exception:
+                pass
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+try:
+    ensure_investment_columns()
+except Exception:
+    pass
 
 @app.route('/')
 def index():
@@ -246,8 +294,11 @@ def dashboard():
             user = dict(user)
         except Exception:
             pass
+
+    # fetch plans
     cur.execute('SELECT * FROM investment_plans')
     raw_plans = cur.fetchall()
+
     # convert user balance to display currency
     display_balance = None
     try:
@@ -255,6 +306,7 @@ def dashboard():
         display_balance = currency.convert_usd_to(user_currency, user['balance']) if user_currency else None
     except Exception:
         display_balance = None
+
     # prepare plans list similar to index
     plans = []
     for p in raw_plans:
@@ -272,17 +324,52 @@ def dashboard():
             'display_profit': display_profit,
             'currency_symbol': (user['currency_symbol'] if user and 'currency_symbol' in user.keys() else session.get('currency_symbol')) or '₦'
         })
-    conn.close()
+
     # fetch user's investments to show on dashboard
-    conn = get_db()
-    cur = conn.cursor()
     try:
         cur.execute('SELECT * FROM investments WHERE user_id = ? ORDER BY id DESC', (session['user_id'],))
         user_investments = cur.fetchall()
     except Exception:
         user_investments = []
+
+    # compute aggregates for dashboard: active investments and current profit (USD)
+    active_investments_total = 0.0
+    current_profit_total = 0.0
+    # build plan minimum map for fallback when investments lack amount_usd column
+    plan_min_map = {}
+    try:
+        for p in raw_plans:
+            try:
+                plan_min_map[p['id']] = float(p['minimum_amount'] or 0)
+            except Exception:
+                plan_min_map[getattr(p, 'id', None)] = 0.0
+    except Exception:
+        plan_min_map = {}
+    try:
+        for inv in user_investments:
+            status = inv['status'] if 'status' in inv.keys() else None
+            if status and str(status).lower() == 'active':
+                if 'amount_usd' in inv.keys():
+                    try:
+                        amt = float(inv['amount_usd'] or 0)
+                    except Exception:
+                        amt = 0.0
+                else:
+                    amt = plan_min_map.get(inv['plan_id'], 0.0)
+                if 'current_profit' in inv.keys():
+                    try:
+                        prof = float(inv['current_profit'] or 0)
+                    except Exception:
+                        prof = 0.0
+                else:
+                    prof = 0.0
+                active_investments_total += amt
+                current_profit_total += prof
+    except Exception:
+        pass
+
     conn.close()
-    return render_template('dashboard.html', user=user, plans=plans, display_balance=display_balance, user_investments=user_investments)
+    return render_template('dashboard.html', user=user, plans=plans, display_balance=display_balance, user_investments=user_investments, active_investments=active_investments_total, current_profit=current_profit_total)
 
 
 @app.route('/plans/<int:plan_id>')
@@ -306,7 +393,6 @@ def plan_detail(plan_id):
         cur.execute('SELECT total_views, total_investors FROM plan_stats WHERE plan_id = ?', (plan_id,))
         stats = cur.fetchone()
     except Exception:
-        # if plan_stats table missing, ignore counting but continue
         stats = {'total_views': 0, 'total_investors': 0}
     # convert amounts for display if user logged in
     display_amount = None
@@ -322,8 +408,6 @@ def plan_detail(plan_id):
             profit_usd = float(plan['total_return'] or plan['profit_amount'] or 0)
             display_amount = currency.convert_usd_to(user_currency, amount_usd)
             display_profit = currency.convert_usd_to(user_currency, profit_usd)
-            # compute applicable minimum (platform minimum $10 enforced)
-            # read platform investment settings for min/max if present
             try:
                 cur.execute('SELECT min_amount, max_amount FROM investment_settings LIMIT 1')
                 s = cur.fetchone()
@@ -342,7 +426,6 @@ def plan_detail(plan_id):
         except Exception:
             pass
     conn.close()
-    # attach display fields to a dict for template compatibility
     plan_dict = dict(plan)
     plan_dict['display_amount'] = display_amount
     plan_dict['display_profit'] = display_profit
@@ -415,6 +498,11 @@ def invest():
     except Exception:
         amount_local = None
         amount_usd = float(plan['minimum_amount']) if plan else 0.0
+    finally:
+        try:
+            conn2.close()
+        except Exception:
+            pass
     # create investment pending (no automatic credit)
     # try to insert with new currency columns; fallback if older schema
     try:
@@ -515,6 +603,26 @@ def admin_dashboard():
     settings = cur.fetchone()
     conn.close()
     return render_template('admin/dashboard.html', users=users, investments=investments, withdrawals=withdrawals, settings=settings)
+
+
+@app.route('/admin/contact', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def admin_contact():
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        phone = request.form.get('phone', '').strip()
+        whatsapp = request.form.get('whatsapp', '').strip()
+        data = {'name': name, 'phone': phone, 'whatsapp': whatsapp}
+        ok = write_admin_contact(data)
+        if ok:
+            flash('Admin contact updated', 'success')
+        else:
+            flash('Failed to save admin contact', 'danger')
+        return redirect(url_for('admin_contact'))
+
+    contact = read_admin_contact()
+    return render_template('admin/admin_contact.html', contact=contact)
 
 
 @app.route('/admin/exchange_rates')
@@ -675,11 +783,51 @@ def admin_plans_edit(plan_id):
 def admin_plans_delete(plan_id):
     conn = get_db()
     cur = conn.cursor()
-    cur.execute('DELETE FROM investment_plans WHERE id = ?', (plan_id,))
-    cur.execute('DELETE FROM plan_stats WHERE plan_id = ?', (plan_id,))
-    conn.commit()
-    conn.close()
-    flash('Plan deleted', 'info')
+    try:
+        # count dependents
+        cur.execute('SELECT COUNT(*) as cnt FROM investments WHERE plan_id = ?', (plan_id,))
+        cnt_row = cur.fetchone()
+        cnt = 0
+        try:
+            cnt = int(cnt_row['cnt']) if cnt_row and 'cnt' in cnt_row.keys() else int(cnt_row[0])
+        except Exception:
+            try:
+                cnt = int(cnt_row[0]) if cnt_row else 0
+            except Exception:
+                cnt = 0
+
+        # delete dependent investments first (destructive)
+        if cnt > 0:
+            try:
+                cur.execute('DELETE FROM investments WHERE plan_id = ?', (plan_id,))
+            except sqlite3.OperationalError:
+                # table may not exist on older DBs; ignore
+                pass
+
+        # delete plan_stats and the plan
+        try:
+            cur.execute('DELETE FROM plan_stats WHERE plan_id = ?', (plan_id,))
+        except sqlite3.OperationalError:
+            # missing table is non-fatal
+            pass
+        try:
+            cur.execute('DELETE FROM investment_plans WHERE id = ?', (plan_id,))
+        except sqlite3.OperationalError:
+            # unexpected, re-raise to be caught below
+            raise
+        conn.commit()
+        conn.close()
+        flash(f'Plan deleted. Removed {cnt} dependent investment(s).', 'info')
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
+        flash(f'Failed to delete plan: {e}', 'danger')
     return redirect(url_for('admin_plans'))
 
 
@@ -724,7 +872,29 @@ def approve_investment(inv_id):
             profit_usd = plan.get('profit_amount') if isinstance(plan, dict) else plan['profit_amount']
             new_balance = user['balance'] + profit_usd
             cur.execute('UPDATE users SET balance = ? WHERE id = ?', (new_balance, inv['user_id']))
-    cur.execute('UPDATE investments SET status = ? WHERE id = ?', ('approved', inv_id))
+        # ensure investment row stores the amount and initializes current_profit when possible
+        try:
+            amount_val = None
+            try:
+                # if investment row already has amount_usd, leave it
+                amount_val = inv['amount_usd'] if 'amount_usd' in inv.keys() else None
+            except Exception:
+                amount_val = None
+            if amount_val is None:
+                # fallback to plan minimum_amount
+                try:
+                    amt = float(plan['minimum_amount'] if isinstance(plan, dict) else plan['minimum_amount'])
+                except Exception:
+                    amt = 0.0
+                # attempt to add columns if not present will raise OperationalError
+                try:
+                    cur.execute('UPDATE investments SET amount_usd = ?, current_profit = ? WHERE id = ?', (amt, 0.0, inv['id']))
+                except sqlite3.OperationalError:
+                    # older schema without those columns; ignore
+                    pass
+        except Exception:
+            pass
+    cur.execute('UPDATE investments SET status = ? WHERE id = ?', ('active', inv_id))
     # increment plan_stats.total_investors if plan_stats table exists
     try:
         cur.execute('SELECT total_investors FROM plan_stats WHERE plan_id = ?', (inv['plan_id'],))
@@ -813,8 +983,8 @@ def admin_investment_edit(inv_id):
             old_status = old['status'] if old and 'status' in old.keys() else None
             user_id = old['user_id'] if old and 'user_id' in old.keys() else None
 
-            # update investment row
-            cur.execute('UPDATE investments SET current_profit = ?, status = ? WHERE id = ?', (new_profit, 'approved', inv_id))
+            # update investment row; preserve existing status when possible
+            cur.execute('UPDATE investments SET current_profit = ?, status = ? WHERE id = ?', (new_profit, old_status or 'active', inv_id))
         except sqlite3.OperationalError:
             # add column then retry
             try:
@@ -827,7 +997,7 @@ def admin_investment_edit(inv_id):
             old_profit = float(old['current_profit']) if old and old['current_profit'] is not None else 0.0
             old_status = old['status'] if old and 'status' in old.keys() else None
             user_id = old['user_id'] if old and 'user_id' in old.keys() else None
-            cur.execute('UPDATE investments SET current_profit = ?, status = ? WHERE id = ?', (new_profit, 'approved', inv_id))
+            cur.execute('UPDATE investments SET current_profit = ?, status = ? WHERE id = ?', (new_profit, old_status or 'active', inv_id))
 
         # adjust user's balance by delta
         try:
@@ -1189,6 +1359,197 @@ def assistant_log():
     finally:
         conn.close()
     return jsonify({'status': 'ok'})
+
+
+def _simple_assistant_reply(message):
+    m = (message or '').lower()
+    if any(x in m for x in ('hello', 'hi', 'hey')):
+        return 'Hello — I can help you compare plans, explain durations, and recommend starting amounts.'
+    if 'recommend' in m or 'plan' in m:
+        return 'Try the Starter Plan: minimum $100, return ~10% over 30 days. Ask for alternatives by risk level.'
+    if 'how' in m and 'invest' in m:
+        return 'Start small, diversify across plans, and reinvest profits cautiously.'
+    if '?' in message:
+        return 'That is a good question. Could you please give a few more details so I can answer precisely?'
+    return 'I can help with investment plans, returns, and account questions. Ask me something specific.'
+
+
+@app.route('/assistant/query', methods=['POST'])
+def assistant_query():
+    data = request.get_json() or {}
+    message = (data.get('message') or '').strip()
+    if not message:
+        return jsonify({'error': 'empty'}), 400
+
+    user_id = data.get('user_id') or session.get('user_id')
+
+    # If OPENAI_API_KEY is set, attempt to use it. Otherwise fall back to a simple local reply.
+    api_key = os.environ.get('OPENAI_API_KEY')
+    model = os.environ.get('OPENAI_MODEL', 'gpt-3.5-turbo')
+    reply = None
+    if api_key:
+        payload = {
+            'model': model,
+            'messages': [
+                {'role': 'system', 'content': 'You are an investment assistant. Answer concisely and safely.'},
+                {'role': 'user', 'content': message}
+            ],
+            'max_tokens': 500
+        }
+        try:
+            req = urllib.request.Request('https://api.openai.com/v1/chat/completions', data=json.dumps(payload).encode('utf-8'),
+                                         headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + api_key})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                res = json.load(resp)
+                if isinstance(res, dict) and res.get('choices'):
+                    choice = res['choices'][0]
+                    if isinstance(choice, dict) and choice.get('message'):
+                        reply = choice['message'].get('content', '')
+        except Exception:
+            # fall through to simple reply on any error
+            reply = None
+
+    if not reply:
+        reply = _simple_assistant_reply(message)
+
+    # Log the user query to assistant_logs for analytics
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute('INSERT INTO assistant_logs (node_id, option_id, user_id, metadata, created_at) VALUES (?, ?, ?, ?, ?)',
+                    (None, None, user_id, json.dumps({'message': message, 'reply': reply}), datetime.utcnow().isoformat()))
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+    return jsonify({'reply': reply})
+
+
+@app.route('/assistant/plans')
+def assistant_plans():
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id, plan_name, minimum_amount, profit_amount, total_return, duration_days FROM investment_plans WHERE status = 'active' ORDER BY id")
+        rows = cur.fetchall()
+        plans = [dict(r) for r in rows]
+        return jsonify({'plans': plans})
+    except Exception:
+        return jsonify({'plans': []})
+
+
+@app.route('/assistant/testimonials')
+def assistant_testimonials():
+    # Prefer testimonials from DB if table exists, otherwise fall back to static list
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT name AS title, body FROM testimonials ORDER BY id DESC")
+        rows = cur.fetchall()
+        if rows:
+            return jsonify({'testimonials': [dict(r) for r in rows]})
+    except Exception:
+        pass
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+    testimonials = [
+        {'title': 'John M.', 'body': 'Turned $200 into consistent weekly profits.'},
+        {'title': 'Sarah K.', 'body': 'Recovered her starting capital in 3 weeks.'},
+        {'title': 'David A.', 'body': 'Upgraded from Starter to Gold within a month.'}
+    ]
+    return jsonify({'testimonials': testimonials})
+
+
+@app.route('/assistant/info')
+def assistant_info():
+    desc = 'This program helps members participate in our trading and investment system. Members choose a plan, activate their account, and monitor progress from their dashboard. Our goal is to make the process simple, transparent, and rewarding.'
+    return jsonify({'description': desc})
+
+
+@app.route('/assistant/contact')
+def assistant_contact():
+    # Pull admin contact from config file first, then env
+    contact = read_admin_contact()
+    name = contact.get('name') or os.environ.get('ADMIN_NAME', 'Mr. Simon')
+    phone = contact.get('phone') or os.environ.get('ADMIN_PHONE', '+234XXXXXXXXX')
+    whatsapp_raw = contact.get('whatsapp') or os.environ.get('ADMIN_WHATSAPP', '')
+    if whatsapp_raw:
+        if whatsapp_raw.startswith('https://'):
+            wa = whatsapp_raw
+        else:
+            wa = 'https://wa.me/' + whatsapp_raw.replace('+', '').replace(' ', '')
+    else:
+        wa = ''
+    return jsonify({'name': name, 'phone': phone, 'whatsapp': wa})
+
+
+@app.context_processor
+def inject_admin_contact():
+    # expose admin contact info to all templates (reads from config file first, then env)
+    cfg_dir = os.path.join(BASE_DIR, 'config')
+    cfg_file = os.path.join(cfg_dir, 'admin_contact.json')
+    contact = {}
+    try:
+        if os.path.exists(cfg_file):
+            with open(cfg_file, 'r', encoding='utf-8') as f:
+                contact = json.load(f) or {}
+    except Exception:
+        contact = {}
+
+    name = contact.get('name') or os.environ.get('ADMIN_NAME', 'Mr. Simon')
+    phone = contact.get('phone') or os.environ.get('ADMIN_PHONE', '+16727023654')
+    whatsapp_raw = contact.get('whatsapp') or os.environ.get('ADMIN_WHATSAPP', '')
+    if whatsapp_raw:
+        if whatsapp_raw.startswith('https://'):
+            wa = whatsapp_raw
+        else:
+            wa = 'https://wa.me/' + whatsapp_raw.replace('+', '').replace(' ', '')
+    else:
+        wa = ''
+    return dict(ADMIN_NAME=name, ADMIN_PHONE=phone, ADMIN_WHATSAPP_URL=wa, ADMIN_WHATSAPP_RAW=whatsapp_raw, ADMIN_CONTACT=contact)
+
+
+def _ensure_config_dir():
+    cfg_dir = os.path.join(BASE_DIR, 'config')
+    os.makedirs(cfg_dir, exist_ok=True)
+    return cfg_dir
+
+
+def read_admin_contact():
+    cfg_dir = _ensure_config_dir()
+    cfg_file = os.path.join(cfg_dir, 'admin_contact.json')
+    if os.path.exists(cfg_file):
+        try:
+            with open(cfg_file, 'r', encoding='utf-8') as f:
+                return json.load(f) or {}
+        except Exception:
+            return {}
+    return {}
+
+
+def write_admin_contact(data):
+    cfg_dir = _ensure_config_dir()
+    cfg_file = os.path.join(cfg_dir, 'admin_contact.json')
+    try:
+        with open(cfg_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
 
 
 @app.route('/admin/assistant/logs')

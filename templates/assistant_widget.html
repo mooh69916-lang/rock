@@ -1,131 +1,47 @@
-{% set cfg = {} %}
-<div id="assistant-root">
-  <style>
-    .assistant-button{position:fixed;right:18px;bottom:18px;width:64px;height:64px;border-radius:50%;background:var(--accent);color:white;border:none;box-shadow:0 8px 24px rgba(2,6,23,0.2);cursor:pointer;z-index:10000}
-    .assistant-chat{position:fixed;right:18px;bottom:92px;width:360px;max-width:92vw;height:480px;background:#fff;border-radius:12px;box-shadow:0 12px 40px rgba(2,6,23,0.2);overflow:hidden;display:none;flex-direction:column;z-index:10000}
-    .assistant-header{padding:12px;background:linear-gradient(90deg,var(--accent),#3b82f6);color:white}
-    .assistant-messages{padding:12px;flex:1;overflow:auto;background:#f7fafc}
-    .assistant-input{padding:12px;border-top:1px solid #eee;display:flex;gap:8px}
-    .assistant-msg{margin-bottom:10px}
-    .assistant-msg.bot{color:#111}
-    .assistant-option{display:inline-block;margin:6px 6px 0 0;padding:8px 10px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer}
-    .assistant-typing{opacity:0.7;font-style:italic}
-  </style>
+{%- set static_css = url_for('static', filename='css/assistant_widget.css') -%}
+{%- set static_js = url_for('static', filename='js/assistant_widget.js') -%}
 
-  <button id="assistant-btn" class="assistant-button">Help</button>
-  <div id="assistant-chat" class="assistant-chat" role="dialog" aria-hidden="true">
-    <div class="assistant-header" style="display:flex;align-items:center;gap:10px">
-      <img id="assistant-avatar" src="" alt="avatar" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.15)">
-      <strong id="assistant-name">Assistant</strong>
-    </div>
-    <div id="assistant-messages" class="assistant-messages"></div>
-    <div class="assistant-input">
-      <input id="assistant-user-input" placeholder="Type a message (optional)" style="flex:1;padding:8px;border:1px solid #e5e7eb;border-radius:8px">
-      <button id="assistant-send" class="btn">Send</button>
-    </div>
-  </div>
+<link rel="stylesheet" href="{{ static_css }}">
+
+<div id="ai-help-widget" aria-hidden="true">
+  <button id="ai-help-fab" class="ai-fab" aria-label="Open Help" title="Help">
+    <span class="fab-glow"></span>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-2h2v2zm1.07-7.75l-.9.92A2 2 0 0012 12h-1v-1h1a1 1 0 01.78-.38c.27 0 .53.11.72.3l.63-.64A2.5 2.5 0 0012.07 6 2.5 2.5 0 009.5 8.5H8A4 4 0 0112.07 9.25c.8 0 1.54-.3 2.07-.75z"/></svg>
+  </button>
+
+  <aside id="ai-help-panel" class="ai-panel" role="dialog" aria-label="AI Assistant" aria-hidden="true">
+    <header class="panel-head">
+      <div class="brand">AI Assist <small>— Virtual Investment Guide</small></div>
+      <button id="ai-close" class="close" aria-label="Close">✕</button>
+    </header>
+    <main class="panel-body" id="ai-body" tabindex="0">
+      <div class="ai-scan" id="ai-scan" aria-hidden="true">
+        <div class="scan-ring"></div>
+        <div class="scan-dot"></div>
+      </div>
+      <div id="ai-messages" class="ai-messages" aria-live="polite"></div>
+    </main>
+    <footer class="panel-foot">
+      <div class="quick-actions">
+        <button data-action="view-plans" class="qa">📊 View Investment Plans</button>
+        <button data-action="stories" class="qa">⭐ Success Stories</button>
+        <button data-action="how" class="qa">ℹ️ How It Works</button>
+        <button data-action="contact" class="qa">📞 Contact Admin</button>
+        <button data-action="whatsapp" class="qa">💬 WhatsApp Support</button>
+      </div>
+      <div class="chat-input">
+        <form id="ai-chat-form" onsubmit="return false;" style="display:flex;gap:8px;align-items:center">
+          <input id="ai-input" type="text" placeholder="Ask me anything about investing..." style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit">
+          <button id="ai-send" class="qa" type="button">Send</button>
+        </form>
+      </div>
+      <div class="foot-note"></div>
+    </footer>
+  </aside>
 </div>
 
+<script defer src="{{ static_js }}"></script>
 <script>
-;(function(){
-  const btn = document.getElementById('assistant-btn');
-  const chat = document.getElementById('assistant-chat');
-  const messages = document.getElementById('assistant-messages');
-  const input = document.getElementById('assistant-user-input');
-  const send = document.getElementById('assistant-send');
-  let currentNode = null;
-
-  function appendMsg(text, cls){
-    const d = document.createElement('div'); d.className = 'assistant-msg ' + (cls||''); d.innerHTML = text; messages.appendChild(d); messages.scrollTop = messages.scrollHeight;
-    // play sound for bot messages
-    if((cls||'').indexOf('bot') !== -1){ playSound(); }
-  }
-
-  function renderOptions(opts){
-    const cont = document.createElement('div'); cont.className='assistant-options';
-    opts.forEach(o=>{
-      const b = document.createElement('button'); b.className='assistant-option'; b.textContent = o.option_text;
-      b.addEventListener('click', ()=> handleOption(o));
-      cont.appendChild(b);
-    });
-    messages.appendChild(cont); messages.scrollTop = messages.scrollHeight;
-  }
-
-  function handleOption(opt){
-    appendMsg('<strong>You:</strong> '+opt.option_text, 'user');
-    // log selection
-    try{ fetch('/assistant/log', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({node_id: currentNode, option_id: opt.id, user_id: CURRENT_USER_ID, metadata: JSON.stringify({option_text: opt.option_text})})}); }catch(e){}
-    // handle action types
-    if(opt.action_type === 'text'){
-      setTimeout(()=>{ appendMsg('<strong>Assistant:</strong> '+(opt.action_payload||''), 'bot'); }, 700);
-      if(opt.next_node_id){ fetchNode(opt.next_node_id); }
-      return;
-    }
-    if(opt.action_type === 'redirect'){
-      window.location = opt.action_payload || '/';
-      return;
-    }
-    if(opt.action_type === 'suggest_plan'){
-      setTimeout(()=>{ appendMsg('<strong>Assistant:</strong> We recommend checking these plans on the Plans page.', 'bot'); window.location = '/'; }, 800);
-      return;
-    }
-    // default: go to next node if present
-    if(opt.next_node_id){ fetchNode(opt.next_node_id); }
-  }
-
-  function fetchNode(id){
-    appendMsg('<span class="assistant-typing">Assistant is typing...</span>', 'bot');
-    fetch('/assistant/node/'+id).then(r=>r.json()).then(data=>{
-      // remove last typing
-      const t = document.querySelector('.assistant-typing'); if(t) t.remove();
-      if(data.node){
-        appendMsg('<strong>Assistant:</strong> '+data.node.question, 'bot');
-        renderOptions(data.options||[]);
-        currentNode = data.node.id;
-      }
-    }).catch(()=>{ appendMsg('Assistant failed to load content', 'bot'); });
-  }
-
-  function startAssistant(){
-    fetch('/assistant/config').then(r=>r.json()).then(cfg=>{
-      if(!cfg.enabled){ btn.style.display='none'; return; }
-      btn.textContent = cfg.button_label || 'Help';
-      document.getElementById('assistant-name').textContent = cfg.assistant_name || 'Assistant';
-      if(cfg.avatar_url){ document.getElementById('assistant-avatar').src = cfg.avatar_url; }
-    });
-    fetch('/assistant/start').then(r=>r.json()).then(data=>{
-      if(data.node){ appendMsg('<strong>Assistant:</strong> '+data.node.question, 'bot'); renderOptions(data.options||[]); currentNode = data.node.id; }
-    }).catch(()=>{});
-  }
-
-  btn.addEventListener('click', function(){
-    if(chat.style.display === 'flex'){ chat.style.display='none'; btn.setAttribute('aria-expanded','false'); }
-    else{ chat.style.display='flex'; chat.setAttribute('aria-hidden','false'); btn.setAttribute('aria-expanded','true'); playSound(); }
-  });
-
-  send.addEventListener('click', function(){
-    const v = input.value.trim(); if(!v) return; appendMsg('<strong>You:</strong> '+v, 'user'); input.value = '';
-    // send user message to log and show canned reply
-    try{ fetch('/assistant/log', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({node_id: currentNode, option_id: null, user_id: CURRENT_USER_ID, metadata: JSON.stringify({message: v})})}); }catch(e){}
-    setTimeout(()=>{ appendMsg('<strong>Assistant:</strong> Thanks — an advisor will review your message.', 'bot'); }, 800);
-  });
-
-  // helper: play brief beep using WebAudio
-  function playSound(){
-    try{
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const o = ctx.createOscillator(); const g = ctx.createGain();
-      o.type = 'sine'; o.frequency.value = 650;
-      g.gain.value = 0.02;
-      o.connect(g); g.connect(ctx.destination);
-      o.start(); setTimeout(()=>{ o.stop(); ctx.close(); }, 120);
-    }catch(e){}
-  }
-
-  // current user id for logging (null if not logged in)
-  const CURRENT_USER_ID = {% if session.user_id %}{{ session.user_id }}{% else %}null{% endif %};
-
-  // initialize
-  startAssistant();
-})();
+  // expose current user id to assistant JS for session-aware logging (safe when undefined)
+  window.__USER_ID = {{ session.get('user_id')|tojson }};
 </script>

@@ -31,6 +31,7 @@
   <label>Display type</label>
   <select name="display_type">
     <option value="slider" {% if not announcement or (announcement.display_type is defined and announcement.display_type=='slider') %}selected{% endif %}>Rotating Banner (Slider)</option>
+    <option value="banner" {% if announcement and announcement.display_type=='banner' %}selected{% endif %}>Top Full-Width Banner</option>
     <option value="modal" {% if announcement and announcement.display_type=='modal' %}selected{% endif %}>Modal Popup</option>
     <option value="floating" {% if announcement and announcement.display_type=='floating' %}selected{% endif %}>Floating Card</option>
   </select>

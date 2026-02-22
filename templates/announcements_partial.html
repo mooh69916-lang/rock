@@ -61,6 +61,26 @@
       <div style="margin-top:8px;text-align:right"><button class="btn" onclick="this.parentNode.parentNode.style.display='none'">Close</button></div>
     </div>
   {% endif %}
+  {% if display == 'banner' %}
+    <div class="ann-banner" role="region" aria-label="Announcement">
+      <div class="container" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="flex:1">
+          <strong style="font-size:18px;color:#fff">{{ a.title }}</strong>
+          <div style="color:rgba(255,255,255,0.9);margin-top:6px">{{ a.content }}</div>
+        </div>
+        <div style="flex:0">
+          <button class="btn" id="ann-banner-close" style="background:rgba(255,255,255,0.12);color:#fff;border:none">Close</button>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function(){
+        document.addEventListener('DOMContentLoaded', function(){
+          var c = document.getElementById('ann-banner-close'); if(c){ c.addEventListener('click', function(){ c.closest('.ann-banner').style.display='none'; }); }
+        });
+      })();
+    </script>
+  {% endif %}
 {% endfor %}
 
 <script>

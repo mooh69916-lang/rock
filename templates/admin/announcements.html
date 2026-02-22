@@ -17,6 +17,9 @@
     <td>{{ a.end_date or '-' }}</td>
     <td>
       <a class="btn" href="{{ url_for('admin_announcements_edit', ann_id=a.id) }}">Edit</a>
+      <form style="display:inline" method="post" action="{{ url_for('admin_announcements_toggle', ann_id=a.id) }}">
+        <button class="btn" type="submit">{{ 'Unpublish' if a.is_active==1 else 'Publish' }}</button>
+      </form>
       <form style="display:inline" method="post" action="{{ url_for('admin_announcements_delete', ann_id=a.id) }}" onsubmit="return confirm('Delete announcement?')">
         <button class="btn" type="submit">Delete</button>
       </form>

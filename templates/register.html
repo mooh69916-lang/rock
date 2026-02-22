@@ -23,11 +23,43 @@
         <label class="label">Country</label>
         <select id="country-select" name="country" class="input" required>
           <option value="">Select your country</option>
-          <option value="NG">Nigeria</option>
+          
           <option value="US">United States</option>
           <option value="PG">Papua New Guinea</option>
           <option value="GB">United Kingdom</option>
           <option value="CA">Canada</option>
+          <option value="SB">🇸🇧 Solomon Islands</option>
+          <option value="VU">🇻🇺 Vanuatu</option>
+          <option value="PH">🇵🇭 Philippines</option>
+          <option value="WS">🇼🇸 Samoa</option>
+          <option value="FJ">🇫🇯 Fiji</option>
+          <option value="TO">🇹🇴 Tonga</option>
+
+          <option value="AU">🇦🇺 Australia</option>
+          <option value="NZ">🇳🇿 New Zealand</option>
+          <option value="NC">🇳🇨 New Caledonia</option>
+          <option value="PF">🇵🇫 French Polynesia</option>
+          <option value="FM">🇫🇲 Micronesia</option>
+          <option value="MH">🇲🇭 Marshall Islands</option>
+          <option value="PW">🇵🇼 Palau</option>
+          <option value="KI">🇰🇮 Kiribati</option>
+          <option value="NR">🇳🇷 Nauru</option>
+          <option value="TV">🇹🇻 Tuvalu</option>
+          <option value="CK">🇨🇰 Cook Islands</option>
+          <option value="NU">🇳🇺 Niue</option>
+          <option value="TK">🇹🇰 Tokelau</option>
+          <option value="AS">🇦🇸 American Samoa</option>
+          <option value="GU">🇬🇺 Guam</option>
+          <option value="MP">🇲🇵 Northern Mariana Islands</option>
+          <option value="JP">🇯🇵 Japan</option>
+          <option value="CN">🇨🇳 China</option>
+          <option value="HK">🇭🇰 Hong Kong</option>
+          <option value="SG">🇸🇬 Singapore</option>
+          <option value="MY">🇲🇾 Malaysia</option>
+          <option value="ID">🇮🇩 Indonesia</option>
+          <option value="TH">🇹🇭 Thailand</option>
+          <option value="VN">🇻🇳 Vietnam</option>
+          <option value="KR">🇰🇷 South Korea</option>
         </select>
         <div class="hint">Selecting your country sets your default currency.</div>
       </div>
@@ -48,7 +80,43 @@ const countryCurrencyMap = {
   'US': { code: 'USD', symbol: '$', name: 'US Dollar', flag: '🇺🇸'},
   'PG': { code: 'PGK', symbol: 'K', name: 'Kina', flag: '🇵🇬'},
   'GB': { code: 'GBP', symbol: '£', name: 'Pound Sterling', flag: '🇬🇧'},
-  'CA': { code: 'CAD', symbol: '$', name: 'Canadian Dollar', flag: '🇨🇦'}
+  'CA': { code: 'CAD', symbol: '$', name: 'Canadian Dollar', flag: '🇨🇦'},
+
+  /* Pacific & Oceania */
+  'SB': { code: 'SBD', symbol: 'SI$', name: 'Solomon Islands Dollar', flag: '🇸🇧'},
+  'VU': { code: 'VUV', symbol: 'VT', name: 'Vatu', flag: '🇻🇺'},
+  'PH': { code: 'PHP', symbol: '₱', name: 'Philippine Peso', flag: '🇵🇭'},
+  'WS': { code: 'WST', symbol: 'WS$', name: 'Samoan Tala', flag: '🇼🇸'},
+  'FJ': { code: 'FJD', symbol: 'FJ$', name: 'Fiji Dollar', flag: '🇫🇯'},
+  'TO': { code: 'TOP', symbol: 'T$', name: 'Tongan Paʻanga', flag: '🇹🇴'},
+
+  'AU': { code: 'AUD', symbol: '$', name: 'Australian Dollar', flag: '🇦🇺'},
+  'NZ': { code: 'NZD', symbol: '$', name: 'New Zealand Dollar', flag: '🇳🇿'},
+  'NC': { code: 'XPF', symbol: '₣', name: 'CFP Franc', flag: '🇳🇨'},
+  'PF': { code: 'XPF', symbol: '₣', name: 'CFP Franc', flag: '🇵🇫'},
+  'FM': { code: 'USD', symbol: '$', name: 'US Dollar', flag: '🇫🇲'},
+  'MH': { code: 'USD', symbol: '$', name: 'US Dollar', flag: '🇲🇭'},
+  'PW': { code: 'USD', symbol: '$', name: 'US Dollar', flag: '🇵🇼'},
+  'KI': { code: 'AUD', symbol: '$', name: 'Australian Dollar', flag: '🇰🇮'},
+  'NR': { code: 'AUD', symbol: '$', name: 'Australian Dollar', flag: '🇳🇷'},
+  'TV': { code: 'AUD', symbol: '$', name: 'Australian Dollar', flag: '🇹🇻'},
+  'CK': { code: 'NZD', symbol: '$', name: 'New Zealand Dollar', flag: '🇨🇰'},
+  'NU': { code: 'NZD', symbol: '$', name: 'New Zealand Dollar', flag: '🇳🇺'},
+  'TK': { code: 'NZD', symbol: '$', name: 'New Zealand Dollar', flag: '🇹🇰'},
+  'AS': { code: 'USD', symbol: '$', name: 'US Dollar', flag: '🇦🇸'},
+  'GU': { code: 'USD', symbol: '$', name: 'US Dollar', flag: '🇬🇺'},
+  'MP': { code: 'USD', symbol: '$', name: 'US Dollar', flag: '🇲🇵'},
+
+  /* Asia & East Asia */
+  'JP': { code: 'JPY', symbol: '¥', name: 'Japanese Yen', flag: '🇯🇵'},
+  'CN': { code: 'CNY', symbol: '¥', name: 'Chinese Yuan', flag: '🇨🇳'},
+  'HK': { code: 'HKD', symbol: '$', name: 'Hong Kong Dollar', flag: '🇭🇰'},
+  'SG': { code: 'SGD', symbol: '$', name: 'Singapore Dollar', flag: '🇸🇬'},
+  'MY': { code: 'MYR', symbol: 'RM', name: 'Malaysian Ringgit', flag: '🇲🇾'},
+  'ID': { code: 'IDR', symbol: 'Rp', name: 'Indonesian Rupiah', flag: '🇮🇩'},
+  'TH': { code: 'THB', symbol: '฿', name: 'Thai Baht', flag: '🇹🇭'},
+  'VN': { code: 'VND', symbol: '₫', name: 'Vietnamese Dong', flag: '🇻🇳'},
+  'KR': { code: 'KRW', symbol: '₩', name: 'South Korean Won', flag: '🇰🇷'}
 };
 document.addEventListener('DOMContentLoaded', function(){
   const sel = document.getElementById('country-select');

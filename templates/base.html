@@ -48,6 +48,13 @@
         </nav>
       </div>
     </header>
+    <div class="live-ticker" aria-live="polite" aria-atomic="true" id="live-ticker" role="status">
+      <div class="container ticker-inner">
+        <span class="ticker-icon" aria-hidden="true">🔔</span>
+        <div class="ticker-message" id="ticker-message">Recent activity will appear here.</div>
+        <button class="ticker-close" id="ticker-close" aria-label="Hide live activity">✕</button>
+      </div>
+    </div>
     <main>
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}

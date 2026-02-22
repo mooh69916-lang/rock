@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Admin Contact{% endblock %}
+{% block content %}
+<div class="container">
+  <h2>Admin Contact</h2>
+  <p class="hint">Update the public admin contact used across the site (WhatsApp, phone, display name).</p>
+  <form method="post">
+    <div class="form-field">
+      <label class="label">Display Name</label>
+      <input class="input" name="name" value="{{ contact.name if contact else ADMIN_NAME }}">
+    </div>
+    <div class="form-field">
+      <label class="label">Phone</label>
+      <input class="input" name="phone" value="{{ contact.phone if contact else ADMIN_PHONE }}">
+    </div>
+    <div class="form-field">
+      <label class="label">WhatsApp (include country code, e.g. +16727023654)</label>
+      <input class="input" name="whatsapp" value="{{ contact.whatsapp if contact and contact.whatsapp else ADMIN_WHATSAPP_RAW }}">
+    </div>
+    <div style="margin-top:12px">
+      <button class="btn" type="submit">Save</button>
+      <a class="btn" href="/admin" style="background:#eee;color:var(--accent);margin-left:8px">Back</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

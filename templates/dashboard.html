@@ -10,11 +10,11 @@
     </div>
     <div class="card">
       <div class="metric-label">Active Investments</div>
-      <div class="metric-value">—</div>
+      <div class="metric-value">${{ '%.2f'|format(active_investments if active_investments is defined else 0) }}</div>
     </div>
     <div class="card">
       <div class="metric-label">Current Profit</div>
-      <div class="metric-value" style="color:var(--success)">—</div>
+      <div class="metric-value" style="color:var(--success)">${{ '%.2f'|format(current_profit if current_profit is defined else 0) }}</div>
     </div>
   </div>
 

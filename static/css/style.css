@@ -76,6 +76,8 @@ body{
 
 /* Detailed plan card design */
 .plan-card-detailed{background:linear-gradient(180deg,#ffffff,#fbfdff);border-radius:16px;padding:18px;box-shadow:0 8px 20px rgba(11,20,35,0.06);border:1px solid rgba(15,23,42,0.04);display:flex;flex-direction:column;gap:12px}
+/* allow absolute-positioned controls inside card */
+.plan-card-detailed{position:relative}
 .plan-card-detailed .badge{align-self:flex-start;background:#fff7ed;color:#92400e;padding:6px 10px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid #ffedd5}
 .plan-card-detailed .plan-name{font-size:14px;font-weight:700;color:var(--accent);letter-spacing:0.6px}
 .plan-card-detailed .plan-head{display:flex;justify-content:space-between;align-items:center}
@@ -91,6 +93,21 @@ body{
 .social-proof .proof{display:flex;align-items:center;gap:6px}
 .icon{display:inline-block;vertical-align:middle;color:#6b7280}
 
+/* Star ratings */
+.stars{display:inline-flex;align-items:center;gap:6px}
+.stars svg{width:18px;height:18px;display:block}
+.star{color:#FFD700;opacity:1;transform-origin:center;transition:transform .18s ease,filter .18s ease}
+.star-empty{color:#e6e9ee;opacity:0.95}
+.star-half{color:#FFD700}
+.star{filter:drop-shadow(0 1px 0 rgba(0,0,0,0.06)) drop-shadow(0 4px 8px rgba(15,23,42,0.06))}
+.stars:hover .star{transform:translateY(-2px) scale(1.06);filter:drop-shadow(0 6px 14px rgba(15,23,42,0.08))}
+.srating{margin-left:8px;color:#374151;font-weight:700;font-size:13px}
+
+/* Ensure SVG path fill uses the bright yellow in case of inheritance or external overrides */
+.plan-card-detailed .star path{fill:#FFD700 !important}
+.plan-card-detailed .star-half path{fill:#FFD700 !important}
+.plan-card-detailed .star-empty path{fill:#e6e9ee !important}
+
 .plan-details{display:flex;flex-direction:column;gap:6px;color:#374151;font-size:14px}
 
 .funding-row{display:flex;flex-direction:column;gap:6px}
@@ -101,6 +118,22 @@ body{
 .plan-action{margin-top:6px}
 .invest-btn{width:100%;padding:12px;border-radius:12px;background:linear-gradient(180deg,var(--accent),#13324a);color:#fff;font-weight:700;box-shadow:0 6px 14px rgba(19,50,74,0.12);border:none}
 .invest-btn:hover{transform:translateY(-2px);transition:transform 150ms ease}
+
+/* Announcement banner (full-width prominent) */
+.ann-banner{width:100%;background:linear-gradient(90deg,#0f1724,#0b1226);color:#fff;padding:12px 0;box-shadow:0 6px 24px rgba(2,6,23,0.4);border-bottom:4px solid rgba(255,255,255,0.03);margin-bottom:12px}
+.ann-banner .container{display:flex;align-items:center}
+.ann-banner .btn{background:rgba(255,255,255,0.12);color:#fff;border:none;padding:8px 12px;border-radius:8px}
+
+/* WhatsApp icon button on plan card */
+.whatsapp-btn{position:absolute;top:14px;right:14px;width:44px;height:44px;border-radius:999px;background:linear-gradient(180deg,#25D366,#128C7E);display:inline-flex;align-items:center;justify-content:center;color:#fff;text-decoration:none;box-shadow:0 8px 20px rgba(37,211,102,0.18);border:2px solid rgba(255,255,255,0.12);transition:transform 160ms ease,box-shadow 160ms ease}
+.whatsapp-btn svg{width:20px;height:20px;display:block;color:#fff}
+.whatsapp-btn:hover{transform:translateY(-3px) scale(1.04);box-shadow:0 14px 34px rgba(37,211,102,0.22)}
+.whatsapp-btn:active{transform:translateY(0) scale(0.98)}
+
+@media(max-width:639px){
+	.whatsapp-btn{top:12px;right:12px;width:38px;height:38px}
+	.whatsapp-btn svg{width:18px;height:18px}
+}
 
 .countdown{font-size:13px;color:#7c8796;padding:8px 0}
 .countdown-timer{font-weight:700;color:var(--accent)}
@@ -142,6 +175,20 @@ body{
 @media(min-width:1000px){
 	.plans{grid-template-columns:repeat(3,1fr)}
 	.cards{grid-template-columns:repeat(4,1fr)}
+}
+
+/* Live activity ticker */
+.live-ticker{background:linear-gradient(90deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));border-bottom:1px solid rgba(0,0,0,0.03);padding:8px 0;box-shadow:0 6px 18px rgba(11,20,35,0.03);}
+.live-ticker .ticker-inner{display:flex;align-items:center;gap:12px;font-size:14px;color:#0f1724}
+.live-ticker .ticker-icon{font-size:18px;display:inline-block;color:#f59e0b}
+.live-ticker .ticker-message{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#0b1220}
+.live-ticker .ticker-message.fade{opacity:0;transform:translateY(-6px);transition:opacity .28s ease,transform .28s ease}
+.live-ticker .ticker-message.show{opacity:1;transform:translateY(0);transition:opacity .28s ease,transform .28s ease}
+.ticker-close{background:transparent;border:0;color:#6b7280;font-size:14px;cursor:pointer;padding:6px 8px;border-radius:6px}
+.ticker-close:hover{background:#f3f4f6}
+
+@media(max-width:640px){
+  .live-ticker .ticker-message{font-size:13px}
 }
 
 /* mobile nav hidden by default on small screens */
