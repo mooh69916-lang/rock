@@ -1,1 +1,1 @@
-web: gunicorn app:app -b 0.0.0.0:$PORT
+web: waitress-serve --listen=0.0.0.0:$PORT app:app
